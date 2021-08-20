@@ -266,7 +266,7 @@ let rec merge projected_role lty1 lty2 =
         merge_recv r2 (lty1 :: ltys2)
     | _ -> if equal lty1 lty2 then lty1 else fail ()
   with Unmergable (l1, l2) ->
-    let error = show l1 ^ " " ^ show l2 in
+    let error = show l1 ^ "\nand\n\n" ^ show l2 in
     uerr @@ Err.UnableToMerge error
 
 (* Check whether the first message in a g choice is from choice_r to recv_r,

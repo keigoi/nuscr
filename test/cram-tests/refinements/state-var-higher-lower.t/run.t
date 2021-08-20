@@ -334,10 +334,14 @@ Show HigherLower FSM and State variables.
     }
   }
   
-  nuscr: User error: Unable to merge: (silent) ignore(ignore:unit{((n)>(x))&&((t)>(1))});
+  nuscr: User error: Unable to merge: 
+         (silent) ignore(ignore:unit{((n)>(x))&&((t)>(1))});
          higher() from B;
          continue Loop;
-          (silent) ignore(ignore:unit{(n)=(x)});
+         
+         and
+         
+         (silent) ignore(ignore:unit{(n)=(x)});
          lose() from B;
          end
          
