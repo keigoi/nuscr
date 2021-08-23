@@ -16,7 +16,8 @@ type t =
   | ChoiceL of RoleName.t * t list
       (** [ChoiceL (name, ts)] is a choice (internal or external) from [name]
           between the [ts] *)
-  | TVarL of TypeVariableName.t * Expr.t list  (** Recursive variable *)
+  | TVarL of TypeVariableName.t * Expr.t list * t Lazy.t
+      (** Recursive variable *)
   | MuL of TypeVariableName.t * (bool (* Silent? *) * Gtype.rec_var) list * t
       (** Fixpoint *)
   | EndL  (** Empty type *)
