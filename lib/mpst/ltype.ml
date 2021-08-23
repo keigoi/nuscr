@@ -312,6 +312,14 @@ let rec merge projected_role lty1 lty2 =
       when RoleName.equal r2 caller && not (RoleName.equal r2 projected_role)
       ->
         merge_recv r2 (lty1 :: ltys2)
+    | (TVarL (tv1, es1, _) as lty1), TVarL (tv2, es2, _)
+      when [%derive.eq: TypeVariableName.t * Expr.t list] (tv1, es1)
+             (tv2, es2) ->
+        lty1
+    | TVarL (_, _, l_lazy), lty2 ->
+        merge projected_role (Lazy.force l_lazy) lty2
+    | lty1, TVarL (_, _, l_lazy) ->
+        merge projected_role lty1 (Lazy.force l_lazy)
     | _ -> if equal lty1 lty2 then lty1 else fail ()
   with Unmergable (l1, l2) ->
     let error = show l1 ^ "\nand\n\n" ^ show l2 in
