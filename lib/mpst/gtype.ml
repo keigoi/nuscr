@@ -107,7 +107,7 @@ let show_rec_var {rv_name; rv_roles; rv_ty; rv_init_expr} =
 type t =
   | MessageG of message * RoleName.t * RoleName.t * t
   | MuG of TypeVariableName.t * rec_var list * t
-  | TVarG of TypeVariableName.t * Expr.t list * t Lazy.t
+  | TVarG of TypeVariableName.t * Expr.t list * t Lazy.t * t
   | ChoiceG of RoleName.t * t list
   | EndG
   | CallG of RoleName.t * ProtocolName.t * RoleName.t list * t
@@ -116,12 +116,12 @@ type t =
 let rec evaluate_lazy_gtype = function
   | MessageG (m, r1, r2, g) -> MessageG (m, r1, r2, evaluate_lazy_gtype g)
   | MuG (tv, rv, g) -> MuG (tv, rv, evaluate_lazy_gtype g)
-  | TVarG (tv, es, g) ->
+  | TVarG (tv, es, g, g') ->
       TVarG
         ( tv
         , es
         , (* Force evaluation, then convert back to a lazy value *)
-          Lazy.from_val (Lazy.force g) )
+          Lazy.from_val (Lazy.force g), g')
   | ChoiceG (r, gs) -> ChoiceG (r, List.map ~f:evaluate_lazy_gtype gs)
   | EndG -> EndG
   | CallG (r, p, rs, g) -> CallG (r, p, rs, evaluate_lazy_gtype g)
@@ -155,7 +155,7 @@ let show =
           (TypeVariableName.user n) rec_vars_s
           (show_global_type_internal (indent + 1) g)
           current_indent
-    | TVarG (n, rec_exprs, _) ->
+    | TVarG (n, rec_exprs, _, g') ->
         let rec_exprs_s =
           if List.is_empty rec_exprs then ""
           else
@@ -163,8 +163,9 @@ let show =
             ^ String.concat ~sep:", " (List.map ~f:Expr.show rec_exprs)
             ^ "]"
         in
-        sprintf "%scontinue %s%s;\n" current_indent (TypeVariableName.user n)
+        sprintf "%scontinue %s%s;\n%s" current_indent (TypeVariableName.user n)
           rec_exprs_s
+          (show_global_type_internal indent g')
     | EndG -> sprintf "%send\n" current_indent
     | ChoiceG (r, gs) ->
         let pre =
@@ -305,8 +306,13 @@ let of_protocol (global_protocol : Syntax.global_protocol) =
           let cont =
             lazy (Lazy.force (Map.find_exn env.lazy_conts name) |> fst)
           in
-          assert_empty rest ;
-          (TVarG (name, rec_exprs, cont), Set.add env.free_names name)
+          (* assert_empty rest ; *)
+          let cont', free_names =
+            conv_interactions
+              {env with unguarded_tvs= Set.empty (module TypeVariableName)}
+              rest
+          in
+          (TVarG (name, rec_exprs, cont, cont'), Set.add (Set.union env.free_names free_names) name)
       | Choice (role, interactions_list) ->
           assert_empty rest ;
           check_role role ;
@@ -361,7 +367,8 @@ let rec flatten = function
 
 let rec substitute g tvar g_sub =
   match g with
-  | TVarG (tvar_, rec_exprs, _) when TypeVariableName.equal tvar tvar_ -> (
+  | TVarG (tvar_, rec_exprs, _, _g'(*TODO*)) when TypeVariableName.equal tvar tvar_ -> (
+    (*  (tvar;G')[gsub/tvar] *)
     match g_sub with
     | MuG (tvar__, rec_vars, g) ->
         let rec_vars =
@@ -375,7 +382,7 @@ let rec substitute g tvar g_sub =
           | _ -> unimpl ~here:[%here] "Error in substitution"
         in
         MuG (tvar__, rec_vars, g)
-    | g_sub -> g_sub )
+    | g_sub -> g_sub (* gsub;G' にしたい *) )
   | TVarG _ -> g
   | MuG (tvar_, _, _) when TypeVariableName.equal tvar tvar_ -> g
   | MuG (tvar_, rec_vars, g_) ->
@@ -476,7 +483,7 @@ let validate_refinements_exn t =
       | MessageG (m, _, _, _) -> [m.payload]
       | ChoiceG (_, gs) -> List.concat_map ~f:gather_first_message gs
       | MuG (_, _, g) -> gather_first_message g
-      | TVarG (_, _, g) -> gather_first_message (Lazy.force g)
+      | TVarG (_, _, g, _g') -> gather_first_message (Lazy.force g) (*TODO*)
       | EndG -> []
       | CallG _ -> (* Not supported *) []
     in
@@ -548,7 +555,7 @@ let validate_refinements_exn t =
         in
         let env = List.fold ~init:env ~f rec_vars in
         aux env g
-    | TVarG (tvar, rec_exprs, _) -> (
+    | TVarG (tvar, rec_exprs, _, _g') -> ((* TODO *)
         let tenv, rvenv, role_knowledge = env in
         (* Unbound TypeVariable should not be possible, because it was
            previously validated *)

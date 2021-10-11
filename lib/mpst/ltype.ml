@@ -299,7 +299,7 @@ let rec check_consistent_gchoice choice_r possible_roles = function
         (module RoleName)
         (List.map ~f:(check_consistent_gchoice choice_r possible_roles) gs)
   | MuG (_, _, g) -> check_consistent_gchoice choice_r possible_roles g
-  | TVarG (_, _, g) ->
+  | TVarG (_, _, g, _g') -> (*TODO*)
       check_consistent_gchoice choice_r possible_roles (Lazy.force g)
   | g ->
       violation ~here:[%here]
@@ -331,10 +331,10 @@ let rec project' env (projected_role : RoleName.t) =
   in
   function
   | EndG -> EndL
-  | TVarG (name, _, _) when Set.mem env.unguarded_tv name ->
+  | TVarG (name, _, _, _g') when Set.mem env.unguarded_tv name -> (*TODO*)
       (* Type variable unguarded *)
       EndL
-  | TVarG (name, rec_exprs, _) ->
+  | TVarG (name, rec_exprs, _, _g') -> (*TODO*)
       let {rvenv; silent_vars; _} = env in
       let rec_expr_filter = Map.find_exn rvenv name in
       let rec_exprs =
@@ -428,7 +428,7 @@ let rec project' env (projected_role : RoleName.t) =
               else aux (Set.add acc l) rest
           | ChoiceG (_, gs) :: rest -> aux acc (gs @ rest)
           | MuG (_, _, g) :: rest -> aux acc (g :: rest)
-          | TVarG (_, _, g) :: rest -> aux acc (Lazy.force g :: rest)
+          | TVarG (_, _, g, _g') :: rest -> aux acc (Lazy.force g :: rest) (* TODO*)
           | _ ->
               violation ~here:[%here]
                 "Normalised global type always has a message in choice \

@@ -31,7 +31,7 @@ type t =
       (** [MessageG (msg, sender, receiver, t)] starts by sending message
           [msg] from [sender] to [receiver] and continues as [t] *)
   | MuG of TypeVariableName.t * rec_var list * t
-  | TVarG of TypeVariableName.t * Expr.t list * t Lazy.t
+  | TVarG of TypeVariableName.t * Expr.t list * t Lazy.t * t
   | ChoiceG of RoleName.t * t list
       (** [ChoiceG (name, ts)] expresses a choice located at participant
           [name] between the [ts] *)
