@@ -404,6 +404,7 @@ and merge_stateful ~env projected_role ltys =
 
 and project' ~env projected_role (g_type : Gtype.t) : t =
   let tvars, g_type = unwind_gtype g_type in
+  (* TODO add (List.tl tvars) to env.bound *)
   let ltys = project_nondet ~visited:tvars ~env projected_role g_type in
   let t = lazy (merge_stateful ~env projected_role ltys) in
   let t =
