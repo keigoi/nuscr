@@ -125,7 +125,7 @@ let extract_choice_labels ltypes =
     | InviteCreateL (_, _, protocol, _) ->
         LabelName.of_string @@ ProtocolName.user protocol
     | SendL ({label; _}, _, _) -> label
-    | MuL (_, _, ltype) -> extract_label ltype
+    | MuL (_, _, ltype) -> extract_label (Lazy.force ltype)
     | TVarL _ ->
         Err.violation
           "Currently unfolding of recursion not supported for extracting \
@@ -946,7 +946,7 @@ let gen_role_implementation msgs_env protocol_setup_env ltype_env global_t
         let loop_label = recursion_label var in
         let (env, var_name_gen), recursion_body =
           gen_implementation (incr_indent indent) is_recv_choice_msg
-            (env, var_name_gen) ltype'
+            (env, var_name_gen) (Lazy.force ltype')
         in
         let loop = recursion_loop recursion_body indent in
         let impl = recursion_impl loop_label loop in

@@ -17,7 +17,7 @@ type t =
       (** [ChoiceL (name, ts)] is a choice (internal or external) from [name]
           between the [ts] *)
   | TVarL of TypeVariableName.t * Expr.t list  (** Recursive variable *)
-  | MuL of TypeVariableName.t * (bool (* Silent? *) * Gtype.rec_var) list * t
+  | MuL of TypeVariableName.t * (bool (* Silent? *) * Gtype.rec_var) list * t Lazy.t
       (** Fixpoint *)
   | EndL  (** Empty type *)
   | InviteCreateL of RoleName.t list * RoleName.t list * ProtocolName.t * t
@@ -54,6 +54,8 @@ val show : t -> string
 (** Converts a local type to a string. *)
 
 val show_nested_t : nested_t -> string
+
+val equal : t -> t -> bool
 
 val project : RoleName.t -> Gtype.t -> t
 (** Project a global type into a particular role. *)

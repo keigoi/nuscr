@@ -10,7 +10,10 @@ type t =
   | SendL of Gtype.message * RoleName.t * t
   | ChoiceL of RoleName.t * t list
   | TVarL of TypeVariableName.t * Expr.t list
-  | MuL of TypeVariableName.t * (bool * Gtype.rec_var) list * t
+  | MuL of
+      TypeVariableName.t
+      * (bool * Gtype.rec_var) list
+      * (t Lazy.t[@equal fun x y -> equal (Lazy.force x) (Lazy.force y)])
   | EndL
   | InviteCreateL of RoleName.t list * RoleName.t list * ProtocolName.t * t
   | AcceptL of
@@ -73,7 +76,7 @@ let show =
         in
         sprintf "%srec %s %s{\n%s%s}\n" current_indent
           (TypeVariableName.user n) rec_vars_s
-          (show_nested_type_internal (indent + 1) l)
+          (show_nested_type_internal (indent + 1) (Lazy.force l))
           current_indent
     | TVarL (n, rec_exprs) ->
         let rec_exprs_s =
@@ -367,7 +370,7 @@ let rec project' env (projected_role : RoleName.t) =
       in
       match project' env projected_role g_type with
       | TVarL _ | EndL -> EndL
-      | lType -> MuL (name, rec_exprs, lType) )
+      | lType -> MuL (name, rec_exprs, Lazy.from_val lType) )
   | MessageG (m, send_r, recv_r, g_type) -> (
       let next env = project' env projected_role g_type in
       match projected_role with
@@ -526,8 +529,8 @@ let make_unique_tvars ltype =
         let tvar_mapping =
           Map.update tvar_mapping tvar ~f:(fun _ -> new_tvar)
         in
-        let namegen, l = rename_tvars tvar_mapping namegen l in
-        (namegen, MuL (new_tvar, rec_vars, l))
+        let namegen, l = rename_tvars tvar_mapping namegen (Lazy.force l) in
+        (namegen, MuL (new_tvar, rec_vars, Lazy.from_val l))
     | TVarL (tvar, rec_exprs) ->
         (namegen, TVarL (Map.find_exn tvar_mapping tvar, rec_exprs))
     | EndL as g -> (namegen, g)

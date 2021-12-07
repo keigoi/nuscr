@@ -304,7 +304,7 @@ let of_local_type lty =
           ; rec_var_info= Map.set env.rec_var_info ~key:new_st ~data:rec_vars
           }
         in
-        let env, curr = conv_ltype_aux env l in
+        let env, curr = conv_ltype_aux env (Lazy.force l) in
         let g = env.g in
         let g = G.add_edge_e g (new_st, Epsilon, curr) in
         let states_to_merge = (new_st, curr) :: env.states_to_merge in
