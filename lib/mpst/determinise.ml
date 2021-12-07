@@ -3,6 +3,9 @@ open Err
 open Names
 open! Ltype
 
+let debug _str = ()
+  (* Stdio.print_endline str *)
+
 type add_state_env =
   { current: TypeVariableName.t option
   ; namegen: Namegen.t
@@ -122,44 +125,79 @@ let rec unwind_gtype (g_type : Gtype.t) =
       (tv :: tvars, g_type)
   | CallG (_, _, _, _) -> assert false
 
+let rec fold tvar ltype =
+  let open Ltype in
+  match ltype with
+  | RecvL (m, send_r, lty) -> RecvL (m, send_r, fold tvar lty)
+  | SendL (m, recv_r, lty) -> SendL (m, recv_r, fold tvar lty)
+  | ChoiceL (choice_r, ltys) ->
+      ChoiceL (choice_r, List.map ~f:(fold tvar) ltys)
+  | TVarL (_, _) | EndL -> ltype
+  | MuL (tv', _, _) when TypeVariableName.equal tvar tv' -> TVarL (tvar, [])
+  | MuL (tv', _, lty) -> MuL (tv', [], lazy (fold tvar (Lazy.force lty)))
+  | InviteCreateL (_, _, _, _)
+   |AcceptL (_, _, _, _, _, _)
+   |SilentL (_, _, _) ->
+      assert false
+
 let get_powerset_state = function
   | EndL -> None
   | MuL (tvar, _, _) -> Some (TypeVariableNameSet.decode tvar)
   | _ -> assert false
 
 type project_env =
-  { bound: Set.M(TypeVariableNameSet).t Lazy.t
+  { bound: Set.M(TypeVariableNameSet).t
   ; state_binding: t Lazy.t Map.M(TypeVariableNameSet).t }
 
+(* projection onto a set of local types *)
 let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
-    (g : Gtype.t) : (t list, TypeVariableName.t list) Either.t =
-  let current = List.hd_exn visited in
+    (g_type : Gtype.t) : (t list, TypeVariableName.t list) Either.t =
   let is_visited tv = List.mem ~equal:TypeVariableName.equal visited tv in
-  match g with
+  let current = List.hd_exn visited in
+  let bind_current env =
+    { env with
+      bound= Set.add env.bound (TypeVariableNameSet.singleton current) }
+  in
+  match g_type with
   | Gtype.EndG -> Either.First [EndL]
   | Gtype.MessageG (m, send_r, recv_r, g_type) ->
       (* standard projection *)
-      if RoleName.equal projected_role send_r then
+      if RoleName.equal projected_role send_r then (
+        debug "sendL" ;
         Either.First
           [ MuL
               ( current
               , []
-              , lazy (SendL (m, recv_r, project' ~env projected_role g_type))
-              ) ]
-      else if RoleName.equal projected_role recv_r then
+              , lazy
+                  (SendL
+                     ( m
+                     , recv_r
+                     , project' ~env:(bind_current env) projected_role g_type
+                     ) ) ) ] )
+      else if RoleName.equal projected_role recv_r then (
+        debug "recvL" ;
         Either.First
           [ MuL
               ( current
               , []
-              , lazy (RecvL (m, send_r, project' ~env projected_role g_type))
-              ) ]
-      else project_nondet' ~visited ~env projected_role g_type
+              , lazy
+                  (RecvL
+                     ( m
+                     , send_r
+                     , project' ~env:(bind_current env) projected_role g_type
+                     ) ) ) ] )
+      else (
+        debug "other" ;
+        project_nondet' ~visited:(current :: visited) ~env projected_role
+          g_type )
   | Gtype.ChoiceG (choice_r, g_types)
     when RoleName.equal projected_role choice_r ->
+      debug "intchoice" ;
       (* internal choice *)
       let ltys, epsilon =
         List.partition_map
-          ~f:(project_nondet' ~visited ~env projected_role)
+          ~f:
+            (project_nondet' ~visited ~env:(bind_current env) projected_role)
           g_types
       in
       let epsilon = List.concat epsilon in
@@ -185,6 +223,7 @@ let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
         in
         Either.First [MuL (current, [], t)]
   | Gtype.ChoiceG (_, g_types) ->
+      debug "extchoice" ;
       (* non-deterministic choice -- defer merging to eliminate backward
          epsilon transition *)
       let ltys, epsilon =
@@ -194,10 +233,12 @@ let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
       in
       let epsilon = List.concat epsilon in
       let ltys = List.concat ltys in
-      if List.length ltys > 0 then
+      if List.length ltys > 0 then (
+        debug "hasconcretetrans" ;
         (* return only concrete (non-epsilon) transitions -- the ones beyond
            backward epsilons are counted at the caller's site. *)
-        Either.First ltys (* multiple transitions *)
+        Either.First ltys
+        (* multiple transitions *) )
       else
         (* no conrete transitions -- check if there are backward epsilon
            links *)
@@ -207,11 +248,14 @@ let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
               not @@ List.mem ~equal:TypeVariableName.equal visited tv )
             epsilon
         in
-        if List.length epsilon = 0 then
+        if List.length epsilon = 0 then (
+          debug "nobackwardlink" ;
           (* no backward links (self loop only) -- end *)
-          Either.First [EndL]
-        else (* backward links *)
-          Either.Second epsilon
+          Either.First [EndL] )
+        else (
+          (* backward links *)
+          debug "backwardlink" ;
+          Either.Second epsilon )
   | Gtype.MuG (tv, _, g_type) ->
       (* visited a recursion variable for the first time. unfold it. *)
       (* unfolding is implicit, as TVarG has its expanded form lazily in the
@@ -229,6 +273,16 @@ let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
   | Gtype.CallG (_, _, _, _) -> (* TODO *) assert false
 
 and project_nondet ~visited ~env projected_role g_type =
+  debug @@ "\n\nrole:" ^ RoleName.user projected_role ;
+  debug @@ "visited:" ^ String.concat ~sep:"; "
+  @@ List.map ~f:TypeVariableName.user visited ;
+  debug @@ "bound:" ^ String.concat ~sep:";"
+  @@ List.map ~f:(fun set ->
+         String.concat ~sep:"-"
+         @@ List.map ~f:TypeVariableName.user
+         @@ Set.to_list set )
+  @@ Set.to_list env.bound ;
+  debug @@ Gtype.show g_type ;
   match
     (* compute all transitions *)
     project_nondet' ~visited ~env projected_role g_type
@@ -296,6 +350,7 @@ and merge_body ~env projected_role ltys =
       @@ List.map ~f:show ts
 
 and merge_stateful ~env projected_role ltys =
+  debug "merge_stateful" ;
   if equal EndL (List.hd_exn ltys) then
     (* all branches must be end *)
     if List.for_all ~f:(equal EndL) ltys then EndL
@@ -309,54 +364,57 @@ and merge_stateful ~env projected_role ltys =
           (tvars, Map.find_exn env.state_binding tvars)
       | _ -> assert false
     in
-    let tvars, ltys = List.unzip @@ List.map ~f:split_state_id ltys in
+    let bindings = List.map ~f:split_state_id ltys in
+    let tvars, ltys = List.unzip bindings in
+    debug @@ "tvars:"
+    ^ String.concat ~sep:","
+        (List.map
+           ~f:(fun set ->
+             String.concat ~sep:"-"
+             @@ List.map ~f:TypeVariableName.user
+             @@ Set.to_list set )
+           tvars ) ;
     let state_id =
       (* and calculate the powerset state *)
       TypeVariableNameSet.union_list tvars
     in
-    if Set.mem (Lazy.force env.bound) state_id then
+    debug @@ "state_id:" ^ String.concat ~sep:"-"
+    @@ List.map ~f:TypeVariableName.user
+    @@ Set.to_list state_id ;
+    if Set.mem env.bound state_id then
       (* already bound *)
       TVarL (TypeVariableNameSet.encode state_id, [])
     else
-      let bound =
-        List.fold_left ~init:(Lazy.force env.bound) ~f:Set.remove tvars
-      in
+      let bound = List.fold_left ~init:env.bound ~f:Set.remove tvars in
       let bound = Set.add bound state_id in
+      let state_binding =
+        List.fold_left bindings
+          ~f:(fun state_binding (key, data) ->
+            Map.add_exn state_binding ~key ~data )
+          ~init:env.state_binding
+      in
       let lty =
         lazy
-          (merge_body
-             ~env:{env with bound= Lazy.from_val bound}
-             projected_role
+          (merge_body ~env:{bound; state_binding} projected_role
              (List.map ~f:Lazy.force ltys) )
       in
-      MuL (TypeVariableNameSet.encode state_id, [], lty)
+      let stateid_tvar = TypeVariableNameSet.encode state_id in
+      MuL (stateid_tvar, [], lazy (fold stateid_tvar (Lazy.force lty)))
 
 and project' ~env projected_role (g_type : Gtype.t) : t =
   let tvars, g_type = unwind_gtype g_type in
-  let rec env_with_current_state =
-    (* mark current state as mu-bound *)
-    { env with
-      bound=
-        lazy
-          (let current_state = get_powerset_state (Lazy.force t)
-           and bound = Lazy.force env.bound in
-           Option.value_map ~f:(Set.add bound) current_state ~default:bound
-          ) }
-  and ltys =
-    lazy
-      (project_nondet ~visited:tvars ~env:env_with_current_state
-         projected_role g_type )
-  and t = lazy (merge_stateful ~env projected_role (Lazy.force ltys)) in
+  let ltys = project_nondet ~visited:tvars ~env projected_role g_type in
+  let t = lazy (merge_stateful ~env projected_role ltys) in
   let t =
     List.fold_left ~init:t
-      ~f:(fun lty tvar -> lazy (MuL (tvar, [], lty)))
+      ~f:(fun t tvar -> Lazy.from_val (MuL (tvar, [], t)))
       (List.tl_exn tvars)
   in
   Lazy.force t
 
 let project projected_role g_type =
   let env =
-    { bound= Lazy.from_val @@ Set.empty (module TypeVariableNameSet)
+    { bound= Set.empty (module TypeVariableNameSet)
     ; state_binding= Map.empty (module TypeVariableNameSet) }
   in
   let t = project' ~env projected_role (normalise_stateful g_type) in
