@@ -108,13 +108,13 @@ let main file enumerate verbose go_path out_dir project fsm gencode_ocaml
     in
     `Ok ()
   with
-  | Err.UserError msg ->
+  (* | Err.UserError msg ->
       `Error (false, "User error: " ^ Err.show_user_error msg)
   | Err.Violation msg -> `Error (false, "Internal Error: " ^ msg)
   | Err.UnImplemented desc ->
       `Error
         ( false
-        , "I'm sorry, it is unfortunate " ^ desc ^ " is not implemented" )
+        , "I'm sorry, it is unfortunate " ^ desc ^ " is not implemented" ) *)
   | e when not (is_debug ()) ->
       `Error (false, "Reported problem:\n " ^ Exn.to_string e)
 

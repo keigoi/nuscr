@@ -61,7 +61,7 @@ module Toplevel = struct
     let l_types =
       List.map
         ~f:(fun (g, roles) ->
-          List.map ~f:(fun r -> Ltype.project (RoleName.of_name r) g) roles
+          List.map ~f:(fun r -> Mpst.Determinise.project (RoleName.of_name r) g) roles
           )
         g_types
     in
@@ -141,7 +141,7 @@ module Toplevel = struct
     Mpst.Extraction.expand_global_protocol ast gp |> Gtype.of_protocol
 
   let project_protocol_role ast ~protocol ~role : Ltype.t =
-    get_global_type ast ~protocol |> Ltype.project role
+    get_global_type ast ~protocol |> Mpst.Determinise.project role
 
   let project_nested_protocol ast ~protocol ~role : Ltype.t =
     let nested_t = Gtype.nested_t_of_module ast in
