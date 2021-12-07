@@ -206,6 +206,7 @@ let rec project_nondet' ~visited ~env (projected_role : RoleName.t)
         violation "Internal choice has a self epsilon-loop"
       else
         let t =
+          (* TODO: check the labels are distinct *)
           lazy
             (let ltys =
                List.concat_map ltys ~f:(function
