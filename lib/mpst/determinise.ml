@@ -82,7 +82,7 @@ module TypeVariableNameSet = struct
 
   let union_list = Set.union_list (module TypeVariableName)
 
-  let decode_prefix = "__states_"
+  let decode_prefix = "__states-"
 
   let decode_sep = '-'
 
